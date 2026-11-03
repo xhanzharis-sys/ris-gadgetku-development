@@ -43,7 +43,15 @@ type Order = {
   status: string
   created_at: string
   produk: { nama: string } | null
-  profiles: { nama: string } | null
+  profiles: { id: string; nama: string } | null
+}
+
+type Customer = {
+  id: string
+  nama: string
+  email: string | null
+  role: string
+  created_at: string
 }
 
 type FormState = Omit<Product, 'id' | 'gambar_url' | 'harga' | 'stok' | 'stok_minimal'> & {
@@ -79,7 +87,8 @@ export default function AdminPage() {
   const supabase = createClient()
   const [products, setProducts] = useState<Product[]>([])
   const [orders, setOrders] = useState<Order[]>([])
-  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders'>('overview')
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'orders' | 'customers'>('overview')
   const [form, setForm] = useState<FormState>(emptyForm)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
@@ -92,13 +101,15 @@ export default function AdminPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true)
-    const [{ data: productRows, error: productError }, { data: orderRows, error: orderError }] = await Promise.all([
+    const [{ data: productRows, error: productError }, { data: orderRows, error: orderError }, { data: customerRows, error: customerError }] = await Promise.all([
       supabase.from('produk').select('id,nama,merek,kategori,deskripsi,harga,stok,stok_minimal,gambar_url,aktif').order('created_at', { ascending: false }),
-      supabase.from('pesanan').select('id,jumlah,total,status,created_at,produk(nama),profiles(nama)').order('created_at', { ascending: false }),
+      supabase.from('pesanan').select('id,jumlah,total,status,created_at,produk(nama),profiles(id,nama)').order('created_at', { ascending: false }),
+      supabase.from('profiles').select('id,nama,email,role,created_at').eq('role', 'user').order('created_at', { ascending: false }),
     ])
-    if (productError || orderError) setError(productError?.message ?? orderError?.message ?? 'Gagal memuat data.')
+    if (productError || orderError || customerError) setError(productError?.message ?? orderError?.message ?? customerError?.message ?? 'Gagal memuat data.')
     setProducts((productRows as Product[]) ?? [])
-    setOrders(((orderRows as unknown as Array<Order & { produk: Array<{ nama: string }>; profiles: Array<{ nama: string }> }>) ?? []).map((order) => ({
+    setCustomers((customerRows as Customer[]) ?? [])
+    setOrders(((orderRows as unknown as Array<Order & { produk: Array<{ nama: string }>; profiles: Array<{ id: string; nama: string }> }>) ?? []).map((order) => ({
       ...order,
       produk: order.produk?.[0] ?? null,
       profiles: order.profiles?.[0] ?? null,
@@ -127,6 +138,7 @@ export default function AdminPage() {
 
   const lowStock = products.filter((product) => product.stok <= product.stok_minimal)
   const filteredProducts = useMemo(() => products.filter((product) => `${product.nama} ${product.merek} ${product.kategori}`.toLowerCase().includes(search.toLowerCase())), [products, search])
+  const filteredCustomers = useMemo(() => customers.filter((customer) => `${customer.nama} ${customer.email ?? ''}`.toLowerCase().includes(search.toLowerCase())), [customers, search])
 
   const updateForm = (key: keyof FormState, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }))
 
@@ -225,13 +237,13 @@ export default function AdminPage() {
           <button className={activeTab === 'overview' ? 'active' : ''} onClick={() => { setActiveTab('overview'); setMenuOpen(false) }}><LayoutDashboard size={18} />Overview</button>
           <button className={activeTab === 'products' ? 'active' : ''} onClick={() => { setActiveTab('products'); setMenuOpen(false) }}><Package size={18} />Produk</button>
           <button className={activeTab === 'orders' ? 'active' : ''} onClick={() => { setActiveTab('orders'); setMenuOpen(false) }}><ShoppingBag size={18} />Pesanan<span className="nav-count">{orders.length}</span></button>
-          <button><Users size={18} />Pelanggan</button>
+          <button className={activeTab === 'customers' ? 'active' : ''} onClick={() => { setActiveTab('customers'); setMenuOpen(false) }}><Users size={18} />Pelanggan<span className="nav-count">{customers.length}</span></button>
         </nav>
         <div className="admin-profile"><div className="avatar">A</div><div><strong>Admin GadgetKu</strong><span>Administrator</span></div><button onClick={logout} className="icon-button" aria-label="Keluar"><LogOut size={16} /></button></div>
       </aside>
       {menuOpen && <button className="admin-scrim" onClick={() => setMenuOpen(false)} aria-label="Tutup menu" />}
       <section className="admin-content">
-        <header className="admin-header"><button className="admin-menu-button" onClick={() => setMenuOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div><p className="eyebrow">Admin Console</p><h1>{activeTab === 'overview' ? 'Overview' : activeTab === 'products' ? 'Manajemen Produk' : 'Pesanan Masuk'}</h1></div><div className="admin-header-actions"><button className="header-logout" onClick={logout}><LogOut size={16} />Keluar</button><div className="admin-avatar">A</div></div></header>
+        <header className="admin-header"><button className="admin-menu-button" onClick={() => setMenuOpen(true)} aria-label="Buka menu"><Menu size={20} /></button><div><p className="eyebrow">Admin Console</p><h1>{activeTab === 'overview' ? 'Overview' : activeTab === 'products' ? 'Manajemen Produk' : activeTab === 'orders' ? 'Pesanan Masuk' : 'Manajemen Pelanggan'}</h1></div><div className="admin-header-actions"><button className="header-logout" onClick={logout}><LogOut size={16} />Keluar</button><div className="admin-avatar">A</div></div></header>
         {notice && <div className="notice"><Check size={16} />{notice}<button onClick={() => setNotice('')} aria-label="Tutup notifikasi"><X size={15} /></button></div>}
         {error && <div className="error-banner"><AlertTriangle size={16} />{error}<button onClick={() => setError('')} aria-label="Tutup error"><X size={15} /></button></div>}
         {loading ? <div className="loading-state">Memuat data...</div> : <>
@@ -240,6 +252,7 @@ export default function AdminPage() {
             <div className="admin-grid"><div className="admin-panel"><div className="panel-heading"><div><p className="eyebrow">Inventory watch</p><h2>Stok menipis</h2></div><button onClick={() => setActiveTab('products')} className="text-link">Lihat semua</button></div>{lowStock.length === 0 ? <div className="empty-state">Semua stok masih aman.</div> : lowStock.slice(0, 5).map((product) => <div className="stock-row" key={product.id}><div className="product-thumb">{product.gambar_url ? <img src={product.gambar_url} alt="" /> : <Box size={18} />}</div><div><strong>{product.nama}</strong><span>{product.merek || product.kategori}</span></div><b className="danger-text">{product.stok} tersisa</b></div>)}</div><div className="admin-panel"><div className="panel-heading"><div><p className="eyebrow">Latest activity</p><h2>Pesanan terbaru</h2></div><button onClick={() => setActiveTab('orders')} className="text-link">Lihat semua</button></div>{orders.slice(0, 5).map((order) => <div className="order-row" key={order.id}><div><strong>{order.profiles?.nama || 'Pelanggan'}</strong><span>{order.produk?.nama || 'Produk'} · {order.jumlah} item</span></div><div><b>{formatRupiah(order.total)}</b><span className={`status-pill ${order.status}`}>{order.status}</span></div></div>)}{orders.length === 0 && <div className="empty-state">Belum ada pesanan.</div>}</div></div>
           </section>}
           {activeTab === 'products' && <section className="admin-panel product-management"><div className="panel-heading"><div><p className="eyebrow">Catalog</p><h2>Produk</h2></div><button className="primary-button" onClick={() => { setEditingId(null); setForm(emptyForm); setShowForm(true) }}><Plus size={16} />Tambah produk</button></div><div className="toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari produk..." aria-label="Cari produk" /></div></div><div className="product-table-wrap"><table className="product-table"><thead><tr><th>Produk</th><th>Kategori</th><th>Harga</th><th>Stok</th><th>Status</th><th>Aksi</th></tr></thead><tbody>{filteredProducts.map((product) => <tr key={product.id}><td><div className="table-product"><div className="product-thumb">{product.gambar_url ? <img src={product.gambar_url} alt="" /> : <Box size={18} />}</div><div><strong>{product.nama}</strong><span>{product.merek || 'Tanpa merek'}</span></div></div></td><td>{product.kategori}</td><td>{formatRupiah(product.harga)}</td><td><span className={product.stok <= product.stok_minimal ? 'danger-text' : ''}>{product.stok}</span></td><td><span className={`status-pill ${product.aktif ? 'active' : 'inactive'}`}>{product.aktif ? 'Aktif' : 'Nonaktif'}</span></td><td><div className="row-actions"><button onClick={() => editProduct(product)} aria-label={`Edit ${product.nama}`}><Edit3 size={16} /></button><button onClick={() => deleteProduct(product)} aria-label={`Hapus ${product.nama}`}><Trash2 size={16} /></button></div></td></tr>)}</tbody></table>{filteredProducts.length === 0 && <div className="empty-state">Belum ada produk yang cocok.</div>}</div></section>}
+          {activeTab === 'customers' && <section className="admin-panel customer-management"><div className="panel-heading"><div><p className="eyebrow">Customer directory</p><h2>Semua pelanggan</h2><p className="panel-subtitle">Kelola akun pelanggan dan lihat ringkasan aktivitas mereka.</p></div><div className="customer-total"><Users size={18} /><strong>{customers.length}</strong><span>pelanggan</span></div></div><div className="toolbar"><div className="search-box"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Cari nama atau email..." aria-label="Cari pelanggan" /></div></div><div className="product-table-wrap"><table className="product-table customer-table"><thead><tr><th>Pelanggan</th><th>Email</th><th>Jumlah pesanan</th><th>Total belanja</th><th>Terdaftar</th><th>Status</th></tr></thead><tbody>{filteredCustomers.map((customer) => { const customerOrders = orders.filter((order) => order.profiles?.id === customer.id); const totalSpent = customerOrders.reduce((sum, order) => sum + Number(order.total || 0), 0); return <tr key={customer.id}><td><div className="customer-cell"><div className="customer-avatar">{(customer.nama || customer.email || 'P').slice(0, 1).toUpperCase()}</div><div><strong>{customer.nama || 'Belum diisi'}</strong><span>ID {customer.id.slice(0, 8)}</span></div></div></td><td>{customer.email || '—'}</td><td>{customerOrders.length}</td><td>{formatRupiah(totalSpent)}</td><td>{new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(customer.created_at))}</td><td><span className="status-pill active">Aktif</span></td></tr> })}</tbody></table>{filteredCustomers.length === 0 && <div className="empty-state">Belum ada pelanggan yang cocok.</div>}</div></section>}
           {activeTab === 'orders' && <section className="admin-panel"><div className="panel-heading"><div><p className="eyebrow">Order management</p><h2>Semua pesanan</h2></div></div><div className="product-table-wrap"><table className="product-table"><thead><tr><th>Pelanggan</th><th>Produk</th><th>Jumlah</th><th>Total</th><th>Status</th><th>Ubah status</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td>{order.profiles?.nama || 'Pelanggan'}</td><td>{order.produk?.nama || 'Produk'}</td><td>{order.jumlah}</td><td>{formatRupiah(order.total)}</td><td><span className={`status-pill ${order.status}`}>{order.status}</span></td><td><select value={order.status} onChange={(event) => updateOrderStatus(order.id, event.target.value)} aria-label="Status pesanan"><option value="pending">Pending</option><option value="diproses">Diproses</option><option value="selesai">Selesai</option><option value="dibatalkan">Dibatalkan</option></select></td></tr>)}</tbody></table>{orders.length === 0 && <div className="empty-state">Belum ada pesanan.</div>}</div></section>}
         </>}
       </section>
