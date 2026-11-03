@@ -46,18 +46,29 @@ type Order = {
   profiles: { nama: string } | null
 }
 
-type FormState = Omit<Product, 'id' | 'gambar_url'> & { gambar_url: string }
+type FormState = Omit<Product, 'id' | 'gambar_url' | 'harga' | 'stok' | 'stok_minimal'> & {
+  gambar_url: string
+  harga: string
+  stok: string
+  stok_minimal: string
+}
 
 const emptyForm: FormState = {
   nama: '',
   merek: '',
   kategori: 'Aksesoris',
   deskripsi: '',
-  harga: 0,
-  stok: 0,
-  stok_minimal: 0,
+  harga: '',
+  stok: '',
+  stok_minimal: '',
   gambar_url: '',
   aktif: true,
+}
+
+const onlyDigits = (value: string) => value.replace(/\D/g, '')
+const formatThousands = (value: string) => {
+  const digits = onlyDigits(value)
+  return digits ? new Intl.NumberFormat('id-ID').format(Number(digits)) : ''
 }
 
 const formatRupiah = (value: number) =>
@@ -117,7 +128,12 @@ export default function AdminPage() {
   const lowStock = products.filter((product) => product.stok <= product.stok_minimal)
   const filteredProducts = useMemo(() => products.filter((product) => `${product.nama} ${product.merek} ${product.kategori}`.toLowerCase().includes(search.toLowerCase())), [products, search])
 
-  const updateForm = (key: keyof FormState, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }))
+  const updateForm = (key: keyof FormState, value: string | boolean) => setForm((current) => ({ ...current, [key]: value }))
+
+  const updateNumericField = (key: 'harga' | 'stok' | 'stok_minimal', value: string) => {
+    const digits = onlyDigits(value)
+    updateForm(key, key === 'harga' ? formatThousands(digits) : digits)
+  }
 
   const uploadImage = async (file: File) => {
     setError('')
@@ -134,9 +150,24 @@ export default function AdminPage() {
 
   const saveProduct = async (event: React.FormEvent) => {
     event.preventDefault()
-    setSaving(true)
     setError('')
-    const payload = { ...form, harga: Number(form.harga), stok: Number(form.stok), stok_minimal: Number(form.stok_minimal), gambar_url: form.gambar_url || null }
+    const hargaDigits = onlyDigits(form.harga)
+    const stokDigits = onlyDigits(form.stok)
+    const stokMinimalDigits = onlyDigits(form.stok_minimal)
+    if (!hargaDigits || Number(hargaDigits) <= 0) {
+      setError('Harga harus diisi dan lebih dari Rp 0.')
+      return
+    }
+    if (!stokDigits) {
+      setError('Stok wajib diisi.')
+      return
+    }
+    if (!stokMinimalDigits) {
+      setError('Stok minimal wajib diisi.')
+      return
+    }
+    setSaving(true)
+    const payload = { ...form, harga: Number(hargaDigits), stok: Number(stokDigits), stok_minimal: Number(stokMinimalDigits), gambar_url: form.gambar_url || null }
     const result = editingId ? await supabase.from('produk').update(payload).eq('id', editingId) : await supabase.from('produk').insert(payload)
     if (result.error) setError(result.error.message)
     else {
@@ -151,7 +182,13 @@ export default function AdminPage() {
 
   const editProduct = (product: Product) => {
     setEditingId(product.id)
-    setForm({ ...product, gambar_url: product.gambar_url ?? '' })
+    setForm({
+      ...product,
+      harga: product.harga ? formatThousands(String(product.harga)) : '',
+      stok: product.stok > 0 ? String(product.stok) : '',
+      stok_minimal: product.stok_minimal > 0 ? String(product.stok_minimal) : '',
+      gambar_url: product.gambar_url ?? '',
+    })
     setShowForm(true)
     setActiveTab('products')
   }
@@ -206,7 +243,7 @@ export default function AdminPage() {
           {activeTab === 'orders' && <section className="admin-panel"><div className="panel-heading"><div><p className="eyebrow">Order management</p><h2>Semua pesanan</h2></div></div><div className="product-table-wrap"><table className="product-table"><thead><tr><th>Pelanggan</th><th>Produk</th><th>Jumlah</th><th>Total</th><th>Status</th><th>Ubah status</th></tr></thead><tbody>{orders.map((order) => <tr key={order.id}><td>{order.profiles?.nama || 'Pelanggan'}</td><td>{order.produk?.nama || 'Produk'}</td><td>{order.jumlah}</td><td>{formatRupiah(order.total)}</td><td><span className={`status-pill ${order.status}`}>{order.status}</span></td><td><select value={order.status} onChange={(event) => updateOrderStatus(order.id, event.target.value)} aria-label="Status pesanan"><option value="pending">Pending</option><option value="diproses">Diproses</option><option value="selesai">Selesai</option><option value="dibatalkan">Dibatalkan</option></select></td></tr>)}</tbody></table>{orders.length === 0 && <div className="empty-state">Belum ada pesanan.</div>}</div></section>}
         </>}
       </section>
-      {showForm && <div className="modal-backdrop" role="presentation"><div className="product-modal" role="dialog" aria-modal="true" aria-labelledby="product-form-title"><div className="modal-heading"><div><p className="eyebrow">Catalog</p><h2 id="product-form-title">{editingId ? 'Edit produk' : 'Tambah produk'}</h2></div><button onClick={() => setShowForm(false)} aria-label="Tutup"><X size={19} /></button></div><form onSubmit={saveProduct} className="product-form"><div className="form-grid"><label>Nama produk<input required value={form.nama} onChange={(event) => updateForm('nama', event.target.value)} /></label><label>Merek<input value={form.merek} onChange={(event) => updateForm('merek', event.target.value)} /></label><label>Kategori<select value={form.kategori} onChange={(event) => updateForm('kategori', event.target.value)}><option>Aksesoris</option><option>Audio</option><option>Power</option><option>Gadget</option><option>Networking</option></select></label><label>Harga<input required min="0" type="number" value={form.harga} onChange={(event) => updateForm('harga', event.target.valueAsNumber || 0)} /></label><label>Stok<input required min="0" type="number" value={form.stok} onChange={(event) => updateForm('stok', event.target.valueAsNumber || 0)} /></label><label>Stok minimal<input required min="0" type="number" value={form.stok_minimal} onChange={(event) => updateForm('stok_minimal', event.target.valueAsNumber || 0)} /></label></div><label>Deskripsi<textarea rows={3} value={form.deskripsi} onChange={(event) => updateForm('deskripsi', event.target.value)} /></label><div className="upload-field"><span>Foto produk</span><div className="upload-row"><label className="upload-button"><Upload size={16} />Pilih gambar<input type="file" accept="image/*" hidden onChange={(event) => event.target.files?.[0] && uploadImage(event.target.files[0])} /></label>{form.gambar_url ? <img src={form.gambar_url} alt="Preview produk" className="image-preview" /> : <span className="upload-hint"><ImagePlus size={16} />Belum ada gambar</span>}</div></div><label className="checkbox-label"><input type="checkbox" checked={form.aktif} onChange={(event) => updateForm('aktif', event.target.checked)} />Produk aktif dan tampil di katalog</label><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Batal</button><button type="submit" className="primary-button" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan produk'}</button></div></form></div></div>}
+      {showForm && <div className="modal-backdrop" role="presentation"><div className="product-modal" role="dialog" aria-modal="true" aria-labelledby="product-form-title"><div className="modal-heading"><div><p className="eyebrow">Catalog</p><h2 id="product-form-title">{editingId ? 'Edit produk' : 'Tambah produk'}</h2></div><button onClick={() => setShowForm(false)} aria-label="Tutup"><X size={19} /></button></div><form onSubmit={saveProduct} className="product-form"><div className="form-grid"><label>Nama produk<input required value={form.nama} onChange={(event) => updateForm('nama', event.target.value)} /></label><label>Merek<input value={form.merek} onChange={(event) => updateForm('merek', event.target.value)} /></label><label>Kategori<select value={form.kategori} onChange={(event) => updateForm('kategori', event.target.value)}><option>Aksesoris</option><option>Audio</option><option>Power</option><option>Gadget</option><option>Networking</option></select></label><label>Harga<span className="price-input"><span className="price-prefix">Rp</span><input inputMode="numeric" value={form.harga} placeholder="Contoh: 2199000" onChange={(event) => updateNumericField('harga', event.target.value)} aria-describedby="harga-help" /></span><small id="harga-help">Masukkan harga dalam rupiah.</small></label><label>Stok<input inputMode="numeric" value={form.stok} placeholder="Contoh: 25" onChange={(event) => updateNumericField('stok', event.target.value)} /></label><label>Stok minimal<input inputMode="numeric" value={form.stok_minimal} placeholder="Contoh: 5" onChange={(event) => updateNumericField('stok_minimal', event.target.value)} /></label></div><label>Deskripsi<textarea rows={3} value={form.deskripsi} onChange={(event) => updateForm('deskripsi', event.target.value)} /></label><div className="upload-field"><span>Foto produk</span><div className="upload-row"><label className="upload-button"><Upload size={16} />Pilih gambar<input type="file" accept="image/*" hidden onChange={(event) => event.target.files?.[0] && uploadImage(event.target.files[0])} /></label>{form.gambar_url ? <img src={form.gambar_url} alt="Preview produk" className="image-preview" /> : <span className="upload-hint"><ImagePlus size={16} />Belum ada gambar</span>}</div></div><label className="checkbox-label"><input type="checkbox" checked={form.aktif} onChange={(event) => updateForm('aktif', event.target.checked)} />Produk aktif dan tampil di katalog</label><div className="modal-actions"><button type="button" className="secondary-button" onClick={() => setShowForm(false)}>Batal</button><button type="submit" className="primary-button" disabled={saving}>{saving ? 'Menyimpan...' : 'Simpan produk'}</button></div></form></div></div>}
     </main>
   )
 }
