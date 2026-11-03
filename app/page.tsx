@@ -45,7 +45,13 @@ export default function Page() {
     setOrders(((orderData as unknown as Array<Omit<Order, 'produk'> & { produk: Array<{ nama: string; merek: string; gambar_url: string | null }> }>) ?? []).map(order => ({ ...order, produk: order.produk?.[0] ?? null })))
     setLoading(false)
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (window.location.hash === '#access-denied') {
+      setMessage('Akses ditolak: halaman ini khusus admin')
+      window.history.replaceState(null, '', window.location.pathname)
+    }
+    load()
+  }, [])
   async function logout() { await supabase.auth.signOut(); window.location.href = '/auth' }
   function openOrderDialog(product: Product) {
     setSelectedProduct(product)
