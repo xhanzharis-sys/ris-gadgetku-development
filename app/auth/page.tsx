@@ -13,7 +13,7 @@ export default function AuthPage() {
     event.preventDefault(); setMessage('')
     const supabase = createClient()
     const result = mode === 'login' ? await supabase.auth.signInWithPassword({ email, password }) : await supabase.auth.signUp({ email, password, options: { data: { nama }, emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback` } })
-    if (result.error) setMessage('Email atau kata sandi tidak valid. Periksa kembali data kamu.')
+    if (result.error) setMessage(result.error.message)
     else setMessage(mode === 'login' ? 'Berhasil masuk.' : 'Cek email kamu untuk konfirmasi akun.')
     if (mode === 'login' && !result.error) window.location.href = '/'
   }
