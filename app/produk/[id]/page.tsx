@@ -15,7 +15,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   return (
     <main className="product-page-shell">
-      <div className="product-page-topbar"><Link href="/" className="back-link"><ArrowLeft size={18} /> Kembali ke Katalog</Link><span className="eyebrow">RIS GADGETKU</span></div>
+      <div className="product-page-topbar"><Link href="/" className="back-link"><ArrowLeft size={18} /> Kembali ke Katalog</Link><img className="topbar-logo" src="/ris-gadgetku-logo.png" alt="Ris GadgetKu" /></div>
       <article className="product-page-card">
         <div className="product-page-image-wrap">{product.gambar_url ? <img src={product.gambar_url} alt={product.nama} className="product-page-image" /> : <div className="product-page-placeholder"><Package size={42} /></div>}</div>
         <div className="product-page-copy">
